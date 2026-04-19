@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { normalizeDfaAutomaton } from '../utils/automata';
 
 const V = (n) => `var(${n})`;
 
@@ -10,13 +11,13 @@ function randomString(alphabet) {
 }
 
 export default function StringTester({ dfa, onPathChange }) {
+  const normalizedDfa = useMemo(() => normalizeDfaAutomaton(dfa), [dfa]);
   const [input,  setInput]  = useState('');
   const [path,   setPath]   = useState([]);
   const [step,   setStep]   = useState(-1);
   const [result, setResult] = useState(null);
   const [isAuto, setIsAuto] = useState(false);
   const autoRef  = useRef(null);
-  const prevStep = useRef(-1);
 
   // ── Notify parent on step change ───────────────────────────────────
   useEffect(() => {
@@ -25,7 +26,7 @@ export default function StringTester({ dfa, onPathChange }) {
     const visited = path.slice(0, step);
     const isRejectedFinal = step === path.length - 1 && result != null && !result.accepted;
     onPathChange(visited, current, isRejectedFinal);
-  }, [step, path, result]);
+  }, [onPathChange, path, result, step]);
 
   // ── Auto-play ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -41,22 +42,23 @@ export default function StringTester({ dfa, onPathChange }) {
 
   // ── Simulation ─────────────────────────────────────────────────────
   const runSimulation = useCallback((overrideInput) => {
-    if (!dfa) return;
+    if (!normalizedDfa) return;
     const str = overrideInput !== undefined ? overrideInput : input;
-    let current = dfa.start;
+    setIsAuto(false);
+    let current = normalizedDfa.startState;
     const p = [current];
     let accepted = false;
     let reason = '';
 
     for (const char of str) {
-      if (!dfa.alphabet?.includes(char)) {
-        reason = `'${char}' ∉ Σ = {${dfa.alphabet?.join(', ')}}`;
+      if (!normalizedDfa.alphabet?.includes(char)) {
+        reason = `'${char}' ∉ Σ = {${normalizedDfa.alphabet?.join(', ')}}`;
         setPath(p); setStep(0);
         setResult({ accepted: false, reason, dead: true });
         onPathChange([], p[0]);
         return;
       }
-      const next = dfa.transitions[current]?.[char];
+      const next = normalizedDfa.transitions[current]?.[char];
       if (!next) {
         reason = `Dead: no δ(${current},'${char}')`;
         setPath(p); setStep(0);
@@ -68,7 +70,7 @@ export default function StringTester({ dfa, onPathChange }) {
       p.push(current);
     }
 
-    accepted = dfa.accept.includes(current);
+    accepted = normalizedDfa.acceptStates.includes(current);
     reason = accepted
       ? `Accepted — final state ${current} ∈ F`
       : `Rejected — ${current} ∉ F`;
@@ -78,17 +80,16 @@ export default function StringTester({ dfa, onPathChange }) {
     onPathChange([], p[0]);
     // Auto-start playback immediately — only if there are steps to animate
     if (p.length > 1) setIsAuto(true);
-  }, [dfa, input]);
+  }, [normalizedDfa, input, onPathChange]);
 
   // ── Random ─────────────────────────────────────────────────────────
   const handleRandom = () => {
-    if (!dfa) return;
-    const s = randomString(dfa.alphabet);
+    if (!normalizedDfa) return;
+    const s = randomString(normalizedDfa.alphabet);
     setInput(s);
     setResult(null); setPath([]); setStep(-1); setIsAuto(false);
     onPathChange([], null);
-    // run immediately
-    setTimeout(() => runSimulation(s), 0);
+    runSimulation(s);
   };
 
   // ── Controls ───────────────────────────────────────────────────────
@@ -115,10 +116,10 @@ export default function StringTester({ dfa, onPathChange }) {
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div style={{ flexShrink: 0 }}>
         <div style={labelStyle}>String Simulator</div>
-        {dfa && (
+        {normalizedDfa && (
           <div style={{ fontSize: 9, fontFamily: V('--font-mono'), color: V('--text-muted'), marginTop: 2 }}>
-            Σ = {'{'}<span style={{ color: '#38bdf8' }}>{dfa.alphabet?.join(', ')}</span>{'}'}
-            {' · '}{dfa.states?.length} states
+            Σ = {'{'}<span style={{ color: '#38bdf8' }}>{normalizedDfa.alphabet?.join(', ')}</span>{'}'}
+            {' · '}{normalizedDfa.states?.length} states
           </div>
         )}
       </div>
@@ -135,8 +136,8 @@ export default function StringTester({ dfa, onPathChange }) {
               onPathChange([], null);
             }}
             onKeyDown={e => e.key === 'Enter' && runSimulation()}
-            placeholder={dfa ? `e.g. ${(dfa.alphabet?.slice(0,3) || []).join('')}` : 'Build a DFA first'}
-            disabled={!dfa}
+            placeholder={normalizedDfa ? `e.g. ${(normalizedDfa.alphabet?.slice(0,3) || []).join('')}` : 'Build a DFA first'}
+            disabled={!normalizedDfa}
             spellCheck={false}
             style={{
               flex: 1, minWidth: 0,
@@ -145,39 +146,39 @@ export default function StringTester({ dfa, onPathChange }) {
               borderRadius: 7, padding: '7px 10px',
               fontFamily: V('--font-mono'), fontSize: 13,
               color: V('--text-primary'), outline: 'none',
-              opacity: dfa ? 1 : 0.4,
+              opacity: normalizedDfa ? 1 : 0.4,
               transition: 'border-color 0.2s',
             }}
-            onFocus={e => { if (dfa) e.target.style.borderColor = '#6e56cf'; }}
+            onFocus={e => { if (normalizedDfa) e.target.style.borderColor = '#6e56cf'; }}
             onBlur={e  => { e.target.style.borderColor = 'var(--border)'; }}
           />
           {/* Random */}
           <button
-            onClick={handleRandom} disabled={!dfa} title="Random string"
+            onClick={handleRandom} disabled={!normalizedDfa} title="Random string"
             style={{
               flexShrink: 0, width: 34, borderRadius: 7,
-              background: dfa ? 'rgba(245,158,11,0.12)' : V('--bg-elevated'),
-              border: `1px solid ${dfa ? 'rgba(245,158,11,0.35)' : V('--border-subtle')}`,
-              color: dfa ? '#fbbf24' : V('--text-muted'),
-              fontSize: 16, cursor: dfa ? 'pointer' : 'not-allowed',
-              opacity: dfa ? 1 : 0.4,
+              background: normalizedDfa ? 'rgba(245,158,11,0.12)' : V('--bg-elevated'),
+              border: `1px solid ${normalizedDfa ? 'rgba(245,158,11,0.35)' : V('--border-subtle')}`,
+              color: normalizedDfa ? '#fbbf24' : V('--text-muted'),
+              fontSize: 16, cursor: normalizedDfa ? 'pointer' : 'not-allowed',
+              opacity: normalizedDfa ? 1 : 0.4,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { if (dfa) { e.currentTarget.style.background = 'rgba(245,158,11,0.22)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.55)'; } }}
-            onMouseLeave={e => { if (dfa) { e.currentTarget.style.background = 'rgba(245,158,11,0.12)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.35)'; } }}
+            onMouseEnter={e => { if (normalizedDfa) { e.currentTarget.style.background = 'rgba(245,158,11,0.22)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.55)'; } }}
+            onMouseLeave={e => { if (normalizedDfa) { e.currentTarget.style.background = 'rgba(245,158,11,0.12)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.35)'; } }}
           >⚄</button>
           {/* Run */}
           <button
-            onClick={() => runSimulation()} disabled={!dfa}
+            onClick={() => runSimulation()} disabled={!normalizedDfa}
             style={{
               flexShrink: 0, borderRadius: 7, padding: '7px 12px',
-              background: dfa ? 'linear-gradient(135deg,#6e56cf,#b44dff)' : V('--bg-elevated'),
+              background: normalizedDfa ? 'linear-gradient(135deg,#6e56cf,#b44dff)' : V('--bg-elevated'),
               color: '#fff', border: 'none',
               fontFamily: V('--font-mono'), fontWeight: 700, fontSize: 12,
-              cursor: dfa ? 'pointer' : 'not-allowed',
-              opacity: dfa ? 1 : 0.4,
-              boxShadow: dfa ? '0 2px 10px rgba(110,86,207,0.4)' : 'none',
+              cursor: normalizedDfa ? 'pointer' : 'not-allowed',
+              opacity: normalizedDfa ? 1 : 0.4,
+              boxShadow: normalizedDfa ? '0 2px 10px rgba(110,86,207,0.4)' : 'none',
               letterSpacing: '0.05em', transition: 'all 0.15s',
             }}
           >▶ Run</button>
@@ -444,7 +445,7 @@ export default function StringTester({ dfa, onPathChange }) {
       )}
 
       {/* ── Empty state ────────────────────────────────────────────── */}
-      {!dfa && (
+      {!normalizedDfa && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -526,3 +527,6 @@ const tapeCell = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   fontFamily: 'var(--font-mono)', fontSize: 13,
 };
+
+
+

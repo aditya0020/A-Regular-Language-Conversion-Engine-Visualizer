@@ -2,15 +2,18 @@
  * Hopcroft's Algorithm — DFA → Minimized DFA
  */
 
+import { normalizeDfaAutomaton } from './automata';
+
 function setsEqual(a, b) {
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;
   return true;
 }
 
-function getReachable({ start, transitions, alphabet }) {
-  const visited = new Set([start]);
-  const queue   = [start];
+function getReachable({ startState, start, transitions, alphabet }) {
+  const origin = startState ?? start;
+  const visited = new Set(origin ? [origin] : []);
+  const queue   = origin ? [origin] : [];
   while (queue.length) {
     const s = queue.shift();
     for (const sym of alphabet) {
@@ -30,16 +33,25 @@ function pName(p) {
 }
 
 export function hopcroftMinimize(dfa) {
-  const { alphabet, start, accept, transitions } = dfa;
+  const normalized = normalizeDfaAutomaton(dfa);
+  const { alphabet, startState, acceptStates, transitions } = normalized;
 
   // Work only with reachable, non-dead states
-  const reachable  = getReachable(dfa);
+  const reachable  = getReachable(normalized);
   const liveStates = [...reachable].filter(s => s !== '∅');
 
-  const F  = new Set(liveStates.filter(s => accept.includes(s)));
-  const nF = new Set(liveStates.filter(s => !accept.includes(s)));
+  const F  = new Set(liveStates.filter(s => acceptStates.includes(s)));
+  const nF = new Set(liveStates.filter(s => !acceptStates.includes(s)));
 
-  if (F.size === 0) return { ...dfa, steps: [], partitionMap: {}, minimizedStateCount: liveStates.length };
+  if (F.size === 0) {
+    return normalizeDfaAutomaton({
+      ...normalized,
+      steps: [],
+      partitionMap: {},
+      originalStateCount: liveStates.length,
+      minimizedStateCount: liveStates.length,
+    });
+  }
 
   // Initial partition P = { F, Q-F }
   let P = [];
@@ -104,7 +116,7 @@ export function hopcroftMinimize(dfa) {
     const name = `M${i}`;
     partMap[name] = [...p].sort();
 
-    if ([...p].some(s => accept.includes(s))) newAccept.push(name);
+    if ([...p].some(s => acceptStates.includes(s))) newAccept.push(name);
 
     newTrans[name] = {};
     const rep = [...p][0];
@@ -120,7 +132,7 @@ export function hopcroftMinimize(dfa) {
     }
   });
 
-  const startGroup = findGroup(P, start);
+  const startGroup = findGroup(P, startState);
   const newStart   = startGroup ? `M${P.indexOf(startGroup)}` : `M0`;
 
   steps.push({
@@ -128,15 +140,15 @@ export function hopcroftMinimize(dfa) {
     partitions: P.map(p => [...p].sort()),
   });
 
-  return {
+  return normalizeDfaAutomaton({
     states:  newStates,
     alphabet,
-    start:   newStart,
-    accept:  newAccept,
+    startState: newStart,
+    acceptStates: newAccept,
     transitions: newTrans,
     steps,
     partitionMap: partMap,
     originalStateCount:   liveStates.length,
     minimizedStateCount:  newStates.length,
-  };
+  });
 }

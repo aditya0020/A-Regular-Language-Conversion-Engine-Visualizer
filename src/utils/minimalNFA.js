@@ -1,3 +1,5 @@
+import { normalizeNfaAutomaton } from './automata';
+
 /**
  * Minimal NFA via Glushkov's Construction + Bisimulation Merging
  * ──────────────────────────────────────────────────────────────────────────────
@@ -343,7 +345,7 @@ export function buildMinimalNFA(regex) {
   const glushkovNFA = buildGlushkovNFA(rootSets, numPositions, follow, posMap, alphabet);
 
   // ── 6. Bisimulation merging → minimal ε-free NFA ─────────────────────────
-  return bisimulationMerge(glushkovNFA);
+  return normalizeNfaAutomaton(bisimulationMerge(glushkovNFA));
 }
 
 /**
@@ -358,5 +360,5 @@ export function buildGlushkovRaw(regex) {
   computeFollow(ast, follow);
   const posMap = new Map();
   collectPositions(ast, posMap);
-  return buildGlushkovNFA(rootSets, numPositions, follow, posMap, alphabet);
+  return normalizeNfaAutomaton(buildGlushkovNFA(rootSets, numPositions, follow, posMap, alphabet));
 }

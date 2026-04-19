@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { normalizeNfaAutomaton } from '../utils/automata';
 
 const V = (n) => `var(${n})`;
 
@@ -162,75 +163,79 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
   const [showAlpha,   setShowAlpha]   = useState(true);
   const [showSA,      setShowSA]      = useState(true);
   const [showTrans,   setShowTrans]   = useState(true);
+  const automaton = normalizeNfaAutomaton(nfa);
+  const { states, alphabet, startState, acceptStates, transitions, epsilon } = automaton;
 
   // ── State ops ──────────────────────────────────────────────────────────
   const addState = () => {
     const s = newState.trim();
-    if (!s || nfa.states.includes(s)) return;
-    const t = { ...nfa.transitions };
-    const e = { ...nfa.epsilon };
-    t[s] = Object.fromEntries(nfa.alphabet.map(sym => [sym, []]));
+    if (!s || states.includes(s)) return;
+    const t = { ...transitions };
+    const e = { ...epsilon };
+    t[s] = Object.fromEntries(alphabet.map(sym => [sym, []]));
     e[s] = [];
-    onNFAChange({ ...nfa, states: [...nfa.states, s], transitions: t, epsilon: e });
+    onNFAChange(normalizeNfaAutomaton({ ...automaton, states: [...states, s], transitions: t, epsilon: e }));
     setNewState('');
   };
 
   const removeState = (toRemove) => {
-    if (nfa.states.length <= 1) return;
-    const states = nfa.states.filter(s => s !== toRemove);
-    const transitions = {};
-    const epsilon = {};
-    states.forEach(s => {
-      transitions[s] = {};
-      nfa.alphabet.forEach(sym => {
-        transitions[s][sym] = (nfa.transitions[s]?.[sym] || []).filter(t => t !== toRemove);
+    if (states.length <= 1) return;
+    const nextStates = states.filter(s => s !== toRemove);
+    const nextTransitions = {};
+    const nextEpsilon = {};
+    nextStates.forEach(s => {
+      nextTransitions[s] = {};
+      alphabet.forEach(sym => {
+        nextTransitions[s][sym] = (transitions[s]?.[sym] || []).filter(t => t !== toRemove);
       });
-      epsilon[s] = (nfa.epsilon[s] || []).filter(t => t !== toRemove);
+      nextEpsilon[s] = (epsilon[s] || []).filter(t => t !== toRemove);
     });
-    onNFAChange({
-      ...nfa, states,
-      start:  nfa.start === toRemove ? states[0] : nfa.start,
-      accept: nfa.accept.filter(s => s !== toRemove),
-      transitions, epsilon,
-    });
+    onNFAChange(normalizeNfaAutomaton({
+      ...automaton,
+      states: nextStates,
+      startState: startState === toRemove ? nextStates[0] : startState,
+      acceptStates: acceptStates.filter(s => s !== toRemove),
+      transitions: nextTransitions,
+      epsilon: nextEpsilon,
+    }));
   };
 
   // ── Alphabet ops ───────────────────────────────────────────────────────
   const addSymbol = () => {
     const sym = newSymbol.trim();
-    if (!sym || sym === 'ε' || nfa.alphabet.includes(sym) || sym.length > 3) return;
-    const transitions = {};
-    nfa.states.forEach(s => {
-      transitions[s] = { ...nfa.transitions[s], [sym]: [] };
+    if (!sym || sym === 'ε' || alphabet.includes(sym) || sym.length > 3) return;
+    const nextTransitions = {};
+    states.forEach(s => {
+      nextTransitions[s] = { ...transitions[s], [sym]: [] };
     });
-    onNFAChange({ ...nfa, alphabet: [...nfa.alphabet, sym], transitions });
+    onNFAChange({ ...automaton, alphabet: [...alphabet, sym], transitions: nextTransitions });
     setNewSymbol('');
   };
 
   const removeSymbol = (sym) => {
-    if (nfa.alphabet.length <= 1) return;
-    const alphabet = nfa.alphabet.filter(s => s !== sym);
-    const transitions = {};
-    nfa.states.forEach(s => {
-      transitions[s] = {};
-      alphabet.forEach(a => { transitions[s][a] = nfa.transitions[s]?.[a] || []; });
+    if (alphabet.length <= 1) return;
+    const nextAlphabet = alphabet.filter(s => s !== sym);
+    const nextTransitions = {};
+    states.forEach(s => {
+      nextTransitions[s] = {};
+      nextAlphabet.forEach(a => { nextTransitions[s][a] = transitions[s]?.[a] || []; });
     });
-    onNFAChange({ ...nfa, alphabet, transitions });
+    onNFAChange({ ...automaton, alphabet: nextAlphabet, transitions: nextTransitions });
   };
 
   // ── Transitions ────────────────────────────────────────────────────────
   const commitTransition = useCallback((state, sym, raw) => {
-    const targets = raw.split(',').map(s => s.trim()).filter(s => nfa.states.includes(s));
-    onNFAChange({ ...nfa, transitions: { ...nfa.transitions, [state]: { ...nfa.transitions[state], [sym]: targets } } });
-  }, [nfa, onNFAChange]);
+    const targets = raw.split(',').map(s => s.trim()).filter(s => states.includes(s));
+    onNFAChange({ ...automaton, transitions: { ...transitions, [state]: { ...transitions[state], [sym]: targets } } });
+  }, [automaton, onNFAChange, states, transitions]);
 
   const commitEpsilon = useCallback((state, raw) => {
-    const targets = raw.split(',').map(s => s.trim()).filter(s => nfa.states.includes(s));
-    onNFAChange({ ...nfa, epsilon: { ...nfa.epsilon, [state]: targets } });
-  }, [nfa, onNFAChange]);
+    const targets = raw.split(',').map(s => s.trim()).filter(s => states.includes(s));
+    onNFAChange({ ...automaton, epsilon: { ...epsilon, [state]: targets } });
+  }, [automaton, epsilon, onNFAChange, states]);
 
   // ── Summary line ───────────────────────────────────────────────────────
-  const hasEps = Object.values(nfa.epsilon || {}).some(arr => arr.length > 0);
+  const hasEps = Object.values(epsilon || {}).some(arr => arr.length > 0);
 
   return (
     <div style={{
@@ -256,10 +261,10 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
         {/* Mini summary */}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[
-            { label: `${nfa.states.length} states`, color: '#38bdf8' },
-            { label: `Σ={${nfa.alphabet.join(',')}}`, color: '#34d399' },
-            { label: `start: ${nfa.start}`, color: V('--text-muted') },
-            { label: `accept: {${nfa.accept.join(',')}}`, color: '#fb923c' },
+            { label: `${states.length} states`, color: '#38bdf8' },
+            { label: `Σ={${alphabet.join(',')}}`, color: '#34d399' },
+            { label: `start: ${startState}`, color: V('--text-muted') },
+            { label: `accept: {${acceptStates.join(',')}}`, color: '#fb923c' },
             hasEps ? { label: 'has ε', color: '#a78bfa' } : null,
           ].filter(Boolean).map((chip, i) => (
             <span key={i} style={{
@@ -301,23 +306,23 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
         <Divider />
 
         {/* ── States ────────────────────────────────────────────────── */}
-        <SectionHeader label="States (Q)" open={showStates} onToggle={() => setShowStates(o => !o)} count={nfa.states.length} />
+        <SectionHeader label="States (Q)" open={showStates} onToggle={() => setShowStates(o => !o)} count={states.length} />
         {showStates && (
           <div style={{ padding: '2px 14px 8px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-              {nfa.states.map(s => (
+              {states.map(s => (
                 <span key={s} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 3,
                   padding: '2px 7px', borderRadius: 5,
-                  background: s === nfa.start ? 'rgba(56,189,248,0.1)' : V('--bg-elevated'),
-                  border: `1px solid ${s === nfa.start ? 'rgba(56,189,248,0.4)' : V('--border-subtle')}`,
+                  background: s === startState ? 'rgba(56,189,248,0.1)' : V('--bg-elevated'),
+                  border: `1px solid ${s === startState ? 'rgba(56,189,248,0.4)' : V('--border-subtle')}`,
                   fontFamily: V('--font-mono'), fontSize: 11, fontWeight: 700,
-                  color: nfa.accept.includes(s) ? '#fb923c' : s === nfa.start ? '#38bdf8' : V('--text-secondary'),
+                  color: acceptStates.includes(s) ? '#fb923c' : s === startState ? '#38bdf8' : V('--text-secondary'),
                 }}>
-                  {s === nfa.start && <span style={{ fontSize: 8 }}>▶</span>}
-                  {nfa.accept.includes(s) && <span style={{ fontSize: 8 }}>✱</span>}
+                  {s === startState && <span style={{ fontSize: 8 }}>▶</span>}
+                  {acceptStates.includes(s) && <span style={{ fontSize: 8 }}>✱</span>}
                   {s}
-                  {nfa.states.length > 1 && (
+                  {states.length > 1 && (
                     <button onClick={() => removeState(s)} style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       color: V('--text-muted'), fontSize: 10, padding: '0 1px', lineHeight: 1,
@@ -345,11 +350,11 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
         <Divider />
 
         {/* ── Alphabet ──────────────────────────────────────────────── */}
-        <SectionHeader label="Alphabet (Σ)" open={showAlpha} onToggle={() => setShowAlpha(o => !o)} count={nfa.alphabet.length} />
+        <SectionHeader label="Alphabet (Σ)" open={showAlpha} onToggle={() => setShowAlpha(o => !o)} count={alphabet.length} />
         {showAlpha && (
           <div style={{ padding: '2px 14px 8px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
-              {nfa.alphabet.map(sym => (
+              {alphabet.map(sym => (
                 <span key={sym} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 3,
                   padding: '2px 7px', borderRadius: 5,
@@ -358,7 +363,7 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
                   fontFamily: V('--font-mono'), fontSize: 12, fontWeight: 700, color: '#34d399',
                 }}>
                   {sym}
-                  {nfa.alphabet.length > 1 && (
+                  {alphabet.length > 1 && (
                     <button onClick={() => removeSymbol(sym)} style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       color: V('--text-muted'), fontSize: 10, padding: '0 1px', lineHeight: 1,
@@ -411,31 +416,31 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
                 <span style={{ ...tableHeaderStyle, textAlign: 'center', color: '#38bdf8' }}>▶ Start</span>
                 <span style={{ ...tableHeaderStyle, textAlign: 'center', color: '#fb923c' }}>✱ Accept</span>
               </div>
-              {nfa.states.map((s, i) => (
+              {states.map((s, i) => (
                 <div key={s} style={{
                   display: 'grid', gridTemplateColumns: '1fr 44px 44px',
                   padding: '5px 10px',
-                  borderBottom: i < nfa.states.length - 1 ? `1px solid ${V('--border-subtle')}` : 'none',
-                  background: nfa.start === s ? 'rgba(56,189,248,0.04)' : 'transparent',
+                  borderBottom: i < states.length - 1 ? `1px solid ${V('--border-subtle')}` : 'none',
+                  background: startState === s ? 'rgba(56,189,248,0.04)' : 'transparent',
                 }}>
                   <span style={{
                     fontFamily: V('--font-mono'), fontSize: 12, fontWeight: 700,
-                    color: nfa.accept.includes(s) ? '#fb923c' : nfa.start === s ? '#38bdf8' : V('--text-secondary'),
+                    color: acceptStates.includes(s) ? '#fb923c' : startState === s ? '#38bdf8' : V('--text-secondary'),
                     alignSelf: 'center',
                   }}>{s}</span>
                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <input type="radio" name="nfa-start" checked={nfa.start === s}
-                      onChange={() => onNFAChange({ ...nfa, start: s })}
+                    <input type="radio" name="nfa-start" checked={startState === s}
+                      onChange={() => onNFAChange({ ...automaton, startState: s })}
                       style={{ accentColor: '#38bdf8', width: 14, height: 14, cursor: 'pointer' }}
                     />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                    <input type="checkbox" checked={nfa.accept.includes(s)}
+                    <input type="checkbox" checked={acceptStates.includes(s)}
                       onChange={() => onNFAChange({
-                        ...nfa,
-                        accept: nfa.accept.includes(s)
-                          ? nfa.accept.filter(x => x !== s)
-                          : [...nfa.accept, s],
+                        ...automaton,
+                        acceptStates: acceptStates.includes(s)
+                          ? acceptStates.filter(x => x !== s)
+                          : [...acceptStates, s],
                       })}
                       style={{ accentColor: '#fb923c', width: 14, height: 14, cursor: 'pointer' }}
                     />
@@ -464,27 +469,27 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${V('--border-subtle')}` }}>
                     <th style={{ ...thStyle, width: 32 }}>δ</th>
-                    {nfa.alphabet.map(sym => (
+                    {alphabet.map(sym => (
                       <th key={sym} style={{ ...thStyle, color: '#38bdf8' }}>{sym}</th>
                     ))}
                     <th style={{ ...thStyle, color: '#a78bfa' }}>ε</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {nfa.states.map((state, i) => (
+                  {states.map((state, i) => (
                     <tr key={state} style={{
-                      borderBottom: i < nfa.states.length - 1 ? `1px solid ${V('--border-subtle')}` : 'none',
+                      borderBottom: i < states.length - 1 ? `1px solid ${V('--border-subtle')}` : 'none',
                     }}>
-                      <td style={{ padding: '4px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, color: nfa.accept.includes(state) ? '#fb923c' : nfa.start === state ? '#38bdf8' : 'var(--text-secondary)' }}>
+                      <td style={{ padding: '4px 6px', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, color: acceptStates.includes(state) ? '#fb923c' : startState === state ? '#38bdf8' : 'var(--text-secondary)' }}>
                         {state}
-                        {state === nfa.start && <span style={{ color: '#38bdf8', fontSize: 8 }}> ▶</span>}
-                        {nfa.accept.includes(state) && <span style={{ color: '#fb923c', fontSize: 8 }}> ✱</span>}
+                        {state === startState && <span style={{ color: '#38bdf8', fontSize: 8 }}> ▶</span>}
+                        {acceptStates.includes(state) && <span style={{ color: '#fb923c', fontSize: 8 }}> ✱</span>}
                       </td>
-                      {nfa.alphabet.map(sym => (
+                      {alphabet.map(sym => (
                         <td key={sym} style={{ padding: '3px 3px' }}>
                           <TransitionCell
                             key={`${state}-${sym}`}
-                            value={(nfa.transitions[state]?.[sym] || []).join(',')}
+                            value={(transitions[state]?.[sym] || []).join(',')}
                             onCommit={raw => commitTransition(state, sym, raw)}
                           />
                         </td>
@@ -492,7 +497,7 @@ export default function NFABuilder({ nfa, onNFAChange, onConvert, onMinimize, ha
                       <td style={{ padding: '3px 3px' }}>
                         <TransitionCell
                           key={`${state}-eps`}
-                          value={(nfa.epsilon[state] || []).join(',')}
+                          value={(epsilon[state] || []).join(',')}
                           onCommit={raw => commitEpsilon(state, raw)}
                         />
                       </td>

@@ -7,24 +7,25 @@ import MinStepPanel from './components/MinStepPanel';
 import StringTester from './components/StringTester';
 
 
-import { subsetConstruction, removeEpsilonTransitions, compressNFA } from './utils/nfaToDfa';
+import { subsetConstruction, compressNFA } from './utils/nfaToDfa';
 import { regexToENFA }    from './utils/regexToENFA';
 import { buildMinimalNFA } from './utils/minimalNFA';
 import { hopcroftMinimize } from './utils/minimizeDFA';
 import { nfaToFlowData, dfaToFlowData } from './utils/graphLayout';
+import { normalizeNfaAutomaton, normalizeDfaAutomaton } from './utils/automata';
 
-const INITIAL_NFA = {
+const INITIAL_NFA = normalizeNfaAutomaton({
   states: ['q0', 'q1', 'q2'],
   alphabet: ['a', 'b'],
-  start: 'q0',
-  accept: ['q2'],
+  startState: 'q0',
+  acceptStates: ['q2'],
   transitions: {
     q0: { a: ['q0', 'q1'], b: ['q0'] },
     q1: { a: [],            b: ['q2'] },
     q2: { a: [],            b: []     },
   },
   epsilon: { q0: [], q1: [], q2: [] },
-};
+});
 
 export default function App() {
   // ── Input mode ───────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ export default function App() {
 
   // ── Conversion handlers ──────────────────────────────────────────────
   const handleBuildFromRegex = (regex) => {
-    const result = regexToENFA(regex);
+    const result = normalizeNfaAutomaton(regexToENFA(regex));
     setEnfa(result);
     setRegexString(regex);    // remember the raw regex for the NFA stage
     resetFrom('enfa');
@@ -93,7 +94,7 @@ export default function App() {
   // minimal ε-free NFA (e.g. 3 states for (a|b)*ab) without ε-elimination.
   const handleRemoveEpsilon = () => {
     if (!regexString) return;
-    const minNFA = buildMinimalNFA(regexString);  // Glushkov + bisimulation
+    const minNFA = normalizeNfaAutomaton(buildMinimalNFA(regexString));  // Glushkov + bisimulation
     setNfaClean(minNFA);
     resetFrom('nfa');
     markReady('nfa');
@@ -102,7 +103,7 @@ export default function App() {
 
   // Builder mode: same Stage 2 compression on the manually-built NFA
   const handleRemoveEpsilonBuilder = () => {
-    const clean = compressNFA(nfa);    // Stage 2A + 2B
+    const clean = normalizeNfaAutomaton(compressNFA(nfa));    // Stage 2A + 2B
     setNfaClean(clean);
     resetFrom('nfa');
     markReady('nfa');
@@ -113,7 +114,7 @@ export default function App() {
   // In builder mode: if nfaClean is not yet set, auto-applies ε-removal on the raw NFA first.
   const handleConvert = () => {
     // Pick the source NFA: prefer already-compressed; fall back to compressing raw NFA
-    const sourceNFA = nfaClean ?? (inputMode === 'builder' ? compressNFA(nfa) : null);
+    const sourceNFA = nfaClean ?? (inputMode === 'builder' ? normalizeNfaAutomaton(compressNFA(nfa)) : null);
     if (!sourceNFA) return;
 
     if (!nfaClean && inputMode === 'builder') {
@@ -121,7 +122,7 @@ export default function App() {
       markReady('nfa');
     }
 
-    const result = subsetConstruction(sourceNFA);
+    const result = normalizeDfaAutomaton(subsetConstruction(sourceNFA));
     setDfa(result);
     resetFrom('dfa');
     setCurrentStep(-1);
@@ -131,11 +132,7 @@ export default function App() {
 
   const handleMinimize = () => {
     if (!dfa) return;
-    // subsetConstruction now returns alphabet; fall back to source NFA's alphabet
-    const alphabet = dfa.alphabet
-      ?? (inputMode === 'regex' ? enfa?.alphabet : nfa.alphabet)
-      ?? [];
-    const result = hopcroftMinimize({ ...dfa, alphabet });
+    const result = normalizeDfaAutomaton(hopcroftMinimize(dfa));
     setMinDfa(result);
     setMinStep(-1);
     markReady('minDfa');
@@ -145,7 +142,10 @@ export default function App() {
   // ── Step navigation ──────────────────────────────────────────────────
   const handleStepChange = useCallback((idx) => {
     setCurrentStep(idx);
+    setMinStep(-1);
     setPathNodes([]);
+    setTraverseEdge(null);
+    setSimRejected(false);
     if (dfa && idx >= 0) {
       const step = dfa.steps[idx];
       setHighlightedNodes([step.from, step.to]);
@@ -156,11 +156,15 @@ export default function App() {
 
   const handleMinStepChange = useCallback((idx) => {
     setMinStep(idx);
+    setCurrentStep(-1);
     setHighlightedNodes([]);
     setPathNodes([]);
+    setTraverseEdge(null);
+    setSimRejected(false);
   }, []);
 
   const handlePathChange = useCallback((visited, current = null, rejected = false) => {
+    setIsPlaying(false);
     setPathNodes(visited || []);
     setHighlightedNodes(current ? [current] : []);
     setSimRejected(rejected);
@@ -170,7 +174,10 @@ export default function App() {
     } else {
       setTraverseEdge(null);
     }
-    if ((visited?.length > 0) || current) setCurrentStep(-1);
+    if ((visited?.length > 0) || current) {
+      setCurrentStep(-1);
+      setMinStep(-1);
+    }
   }, []);
 
   // ── Auto-play simulation ─────────────────────────────────────────────
@@ -179,23 +186,33 @@ export default function App() {
   const setActiveStep = activeStage === 'minDfa' ? handleMinStepChange : handleStepChange;
 
   useEffect(() => {
-    if (!isPlaying) { clearInterval(playTimerRef.current); return; }
-    if (activeSteps.length === 0) { setIsPlaying(false); return; }
-    playTimerRef.current = setInterval(() => {
-      setActiveStep(prev => {
-        const next = (prev === -1 ? 0 : prev + 1);
-        if (next >= activeSteps.length) { setIsPlaying(false); return prev; }
-        return next;
-      });
+    clearTimeout(playTimerRef.current);
+
+    if (!isPlaying) return undefined;
+    if (activeSteps.length === 0) {
+      setIsPlaying(false);
+      return undefined;
+    }
+    if (activeStepIdx >= activeSteps.length - 1) {
+      setIsPlaying(false);
+      return undefined;
+    }
+
+    const nextStep = activeStepIdx === -1 ? 0 : activeStepIdx + 1;
+    playTimerRef.current = setTimeout(() => {
+      setActiveStep(nextStep);
     }, 900);
-    return () => clearInterval(playTimerRef.current);
-  }, [isPlaying, activeSteps.length, activeStage]);
+
+    return () => clearTimeout(playTimerRef.current);
+  }, [isPlaying, activeStepIdx, activeSteps.length, setActiveStep]);
 
   const simReset = () => {
     setIsPlaying(false);
     setActiveStep(-1);
     setHighlightedNodes([]);
     setPathNodes([]);
+    setTraverseEdge(null);
+    setSimRejected(false);
   };
 
   // ── Graph data ───────────────────────────────────────────────────────
@@ -207,7 +224,7 @@ export default function App() {
   // NFA:   always the ε-removed version
   const nfaFlow    = useMemo(() => nfaClean ? nfaToFlowData(nfaClean) : null, [nfaClean]);
   const dfaFlow    = useMemo(() => dfa    ? dfaToFlowData(dfa,    highlightedNodes, pathNodes, traverseEdge, simRejected) : null, [dfa,    highlightedNodes, pathNodes, traverseEdge, simRejected]);
-  const minDfaFlow = useMemo(() => minDfa ? dfaToFlowData(minDfa, [],               pathNodes, traverseEdge, simRejected) : null, [minDfa, pathNodes, traverseEdge, simRejected]);
+  const minDfaFlow = useMemo(() => minDfa ? dfaToFlowData(minDfa, highlightedNodes, pathNodes, traverseEdge, simRejected) : null, [minDfa, highlightedNodes, pathNodes, traverseEdge, simRejected]);
 
   // ── Active flow data for canvas ──────────────────────────────────────
   const activeFlow = useMemo(() => {
@@ -232,10 +249,10 @@ export default function App() {
   ], [inputMode, enfa, nfaClean, dfa, minDfa]);
 
   // ── Active DFA for string tester ─────────────────────────────────────
-  const activeDFA = activeStage === 'minDfa' ? minDfa : dfa;
+  const activeDFA = minDfa ?? dfa;
 
   // ── Stats ─────────────────────────────────────────────────────────────
-  const dfaStats = dfa  ? { states: dfa.states.length,  accept: dfa.accept.length } : null;
+  const dfaStats = dfa  ? { states: dfa.states.length,  accept: dfa.acceptStates.length } : null;
   const minStats = minDfa ? { original: minDfa.originalStateCount, minimized: minDfa.minimizedStateCount } : null;
 
   // ── Which "ready" stage to auto-switch to on stage click ─────────────
@@ -508,7 +525,7 @@ export default function App() {
               {inputMode === 'builder' ? (
                 <NFABuilder
                   nfa={nfa}
-                  onNFAChange={(n) => { setNfa(n); setNfaClean(null); resetFrom('nfa'); setActiveStage('enfa'); }}
+                  onNFAChange={(n) => { setNfa(normalizeNfaAutomaton(n)); setNfaClean(null); resetFrom('nfa'); setActiveStage('enfa'); }}
                   onConvert={handleConvert}
                   onMinimize={handleMinimize}
                   hasDfa={!!dfa}
@@ -665,7 +682,8 @@ export default function App() {
               {/* Test tab */}
               {rightTab === 'test' && (
                 <StringTester
-                  dfa={activeDFA ? { ...activeDFA, alphabet: (inputMode === 'regex' ? enfa?.alphabet : nfa.alphabet) || [] } : null}
+                  key={activeDFA ? `${activeDFA.startState ?? activeDFA.start}|${activeDFA.states?.join(',')}` : 'no-dfa'}
+                  dfa={activeDFA}
                   onPathChange={handlePathChange}
                 />
               )}
@@ -787,8 +805,9 @@ function EmptyCanvas({ activeStage, inputMode }) {
 // ── Right Sidebar Transition Table (vertical layout, no horizontal scroll) ──
 function RightSidebarTable({ automaton, type }) {
   if (!automaton) return null;
-  const { states = [], alphabet = [], transitions = {}, epsilon = {}, start, accept = [] } = automaton;
   const isNFA   = type === 'enfa' || type === 'nfa';
+  const normalized = isNFA ? normalizeNfaAutomaton(automaton) : normalizeDfaAutomaton(automaton);
+  const { states = [], alphabet = [], transitions = {}, epsilon = {}, startState, acceptStates = [] } = normalized;
   const showEps = type === 'enfa';
   const cols    = showEps ? [...alphabet, 'ε'] : [...alphabet];
 
@@ -811,8 +830,8 @@ function RightSidebarTable({ automaton, type }) {
   return (
     <div style={{ overflowY: 'auto', overflowX: 'hidden', height: '100%', padding: '8px 10px' }}>
       {states.map(state => {
-        const isStart  = state === start;
-        const isAccept = accept.includes(state);
+        const isStart  = state === startState;
+        const isAccept = acceptStates.includes(state);
         const isDead   = state === '∅';
         return (
           <div key={state} style={{

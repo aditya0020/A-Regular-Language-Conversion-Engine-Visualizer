@@ -18,6 +18,8 @@
  * }
  */
 
+import { normalizeDfaAutomaton, normalizeNfaAutomaton } from './automata';
+
 // ── Utility: ε-closure ────────────────────────────────────────────────────────
 
 /**
@@ -65,8 +67,9 @@ export function move(states, symbol, nfa) {
  * Since Glushkov's NFA has no ε-transitions, this is a fast identity-like pass.
  */
 export function removeEpsilonTransitions(nfa) {
-  const { states, alphabet, start, accept } = nfa;
-  const acceptSet = new Set(accept);
+  const normalized = normalizeNfaAutomaton(nfa);
+  const { states, alphabet, startState, acceptStates } = normalized;
+  const acceptSet = new Set(acceptStates);
 
   const newTransitions = {};
   const newAccept      = [];
@@ -82,14 +85,14 @@ export function removeEpsilonTransitions(nfa) {
     }
   }
 
-  return {
+  return normalizeNfaAutomaton({
     states,
     alphabet,
-    start,
-    accept:      newAccept,
+    startState,
+    acceptStates: newAccept,
     transitions: newTransitions,
     epsilon:     Object.fromEntries(states.map(s => [s, []])),
-  };
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -202,11 +205,12 @@ function bisimulationMerge(nfa) {
  * during ε-closure rerouting but the original nodes were never cleaned up.
  */
 export function removeUnreachableStates(nfa) {
-  const { states, alphabet, start, accept, transitions, epsilon } = nfa;
+  const normalized = normalizeNfaAutomaton(nfa);
+  const { states, alphabet, startState, acceptStates, transitions, epsilon } = normalized;
 
   // BFS / DFS — follow symbol-transitions AND any residual ε-transitions
-  const reachable = new Set([start]);
-  const queue     = [start];
+  const reachable = new Set(startState ? [startState] : []);
+  const queue     = startState ? [startState] : [];
 
   while (queue.length) {
     const s = queue.shift();
@@ -223,7 +227,7 @@ export function removeUnreachableStates(nfa) {
   }
 
   const liveStates      = states.filter(s => reachable.has(s));
-  const newAccept       = accept.filter(s => reachable.has(s));
+  const newAccept       = acceptStates.filter(s => reachable.has(s));
   const newTransitions  = {};
   const newEpsilon      = {};
 
@@ -235,8 +239,14 @@ export function removeUnreachableStates(nfa) {
     }
   }
 
-  return { states: liveStates, alphabet, start, accept: newAccept,
-           transitions: newTransitions, epsilon: newEpsilon };
+  return normalizeNfaAutomaton({
+    states: liveStates,
+    alphabet,
+    startState,
+    acceptStates: newAccept,
+    transitions: newTransitions,
+    epsilon: newEpsilon,
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -291,8 +301,9 @@ export function compressNFA(nfa) {
  */
 export function subsetConstruction(nfa) {
   const DEAD = '∅';
+  const normalized = normalizeNfaAutomaton(nfa);
 
-  const startClosure = epsilonClosure([nfa.start], nfa);
+  const startClosure = epsilonClosure([normalized.startState], normalized);
   const startKey     = startClosure.length ? startClosure.join(',') : DEAD;
 
   const stateMap    = new Map([[startKey, startClosure]]);
@@ -309,15 +320,15 @@ export function subsetConstruction(nfa) {
 
     const nfaStates = stateMap.get(key) ?? [];
 
-    for (const sym of nfa.alphabet) {
+    for (const sym of normalized.alphabet) {
       let closure, closureKey;
 
       if (key === DEAD) {
         closure    = [];
         closureKey = DEAD;
       } else {
-        const moved = move(nfaStates, sym, nfa);
-        closure     = epsilonClosure(moved, nfa);
+        const moved = move(nfaStates, sym, normalized);
+        closure     = epsilonClosure(moved, normalized);
         closureKey  = closure.length ? closure.join(',') : DEAD;
 
         steps.push({
@@ -340,18 +351,18 @@ export function subsetConstruction(nfa) {
     }
   }
 
-  const acceptSet = new Set(nfa.accept);
+  const acceptSet = new Set(normalized.acceptStates);
   const accept    = [...stateMap.keys()].filter(key =>
     (stateMap.get(key) ?? []).some(s => acceptSet.has(s))
   );
 
-  return {
-    start:       startKey,
+  return normalizeDfaAutomaton({
+    startState:  startKey,
     states:      [...stateMap.keys()],
     stateMap,
     transitions,
-    accept,
-    alphabet:    nfa.alphabet,
+    acceptStates: accept,
+    alphabet:    normalized.alphabet,
     steps,
-  };
+  });
 }

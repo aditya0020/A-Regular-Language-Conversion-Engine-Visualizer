@@ -1,4 +1,5 @@
 import FloatingPanel from './FloatingPanel';
+import { normalizeDfaAutomaton, normalizeNfaAutomaton } from '../utils/automata';
 
 /**
  * TransitionTablePanel
@@ -10,9 +11,16 @@ import FloatingPanel from './FloatingPanel';
 export default function TransitionTablePanel({ automaton, type, label, onClose, defaultPosition }) {
   if (!automaton) return null;
 
-  const { states = [], alphabet = [], transitions = {}, epsilon = {}, start, accept = [] } = automaton;
-
   const isNFA      = type === 'enfa' || type === 'nfa';
+  const normalized = isNFA ? normalizeNfaAutomaton(automaton) : normalizeDfaAutomaton(automaton);
+  const {
+    states = [],
+    alphabet = [],
+    transitions = {},
+    epsilon = {},
+    startState,
+    acceptStates = [],
+  } = normalized;
   const showEps    = type === 'enfa';
   const cols       = showEps ? [...alphabet, 'ε'] : [...alphabet];
 
@@ -75,8 +83,8 @@ export default function TransitionTablePanel({ automaton, type, label, onClose, 
           </thead>
           <tbody>
             {states.map((state) => {
-              const isStart  = state === start;
-              const isAccept = accept.includes(state);
+              const isStart  = state === startState;
+              const isAccept = acceptStates.includes(state);
               const isDead   = state === '∅';
               return (
                 <tr key={state} style={{

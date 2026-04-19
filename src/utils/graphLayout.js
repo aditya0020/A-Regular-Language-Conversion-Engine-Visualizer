@@ -1,4 +1,5 @@
 import { MarkerType } from '@xyflow/react';
+import { normalizeDfaAutomaton, normalizeNfaAutomaton } from './automata';
 
 // ── BFS hierarchical layout ───────────────────────────────────────────────────
 /**
@@ -177,7 +178,8 @@ function makeMarker(color) {
 // NFA → ReactFlow data
 // ══════════════════════════════════════════════════════════════════════════════
 export function nfaToFlowData(nfa) {
-  const { states, alphabet, start, accept, transitions, epsilon } = nfa;
+  const normalized = normalizeNfaAutomaton(nfa);
+  const { states, alphabet, startState, acceptStates, transitions, epsilon } = normalized;
 
   const getNeighbors = s => {
     const ns = new Set();
@@ -186,7 +188,7 @@ export function nfaToFlowData(nfa) {
     return [...ns];
   };
 
-  const positions = bfsLayout(states, start, getNeighbors);
+  const positions = bfsLayout(states, startState, getNeighbors);
 
   const getTransitions = from => {
     const result = [];
@@ -207,8 +209,8 @@ export function nfaToFlowData(nfa) {
     position: { x: positions[state]?.x || 80, y: positions[state]?.y || 240 },
     data: {
       label:         state,
-      isAccept:      accept.includes(state),
-      isStart:       state === start,
+      isAccept:      acceptStates.includes(state),
+      isStart:       state === startState,
       isHighlighted: false,
       isPath:        false,
       isDead:        false,
@@ -246,10 +248,11 @@ export function nfaToFlowData(nfa) {
 // DFA → ReactFlow data
 // ══════════════════════════════════════════════════════════════════════════════
 export function dfaToFlowData(dfa, highlightedNodes = [], pathNodes = [], activeEdge = null, simRejected = false) {
-  const { states, transitions, start, accept } = dfa;
+  const normalized = normalizeDfaAutomaton(dfa);
+  const { states, transitions, startState, acceptStates } = normalized;
 
   const getNeighbors = s => [...new Set(Object.values(transitions[s] || {}))];
-  const positions    = bfsLayout(states, start, getNeighbors);
+  const positions    = bfsLayout(states, startState, getNeighbors);
 
   const getTransitions = from =>
     Object.entries(transitions[from] || {}).map(([label, to]) => ({ to, label }));
@@ -268,8 +271,8 @@ export function dfaToFlowData(dfa, highlightedNodes = [], pathNodes = [], active
     position: { x: positions[state]?.x || 80, y: positions[state]?.y || 240 },
     data: {
       label:         state === '∅' ? '∅' : `{${state}}`,
-      isAccept:      accept.includes(state),
-      isStart:       state === start,
+      isAccept:      acceptStates.includes(state),
+      isStart:       state === startState,
       isHighlighted: highlightedNodes.includes(state),
       isPath:        pathNodes.includes(state),
       isDead:        state === '∅',

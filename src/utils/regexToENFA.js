@@ -1,3 +1,5 @@
+import { normalizeNfaAutomaton } from './automata';
+
 /**
  * Stage 1 — Optimized Thompson's Construction  (Regex → ε-NFA)
  *
@@ -388,14 +390,14 @@ export function regexToENFA(regex) {
     }
   }
 
-  return {
+  return normalizeNfaAutomaton({
     states:      frag.states,
     alphabet,
     start:       frag.start,
     accept:      [frag.accept],
     transitions: frag.transitions,
     epsilon:     frag.epsilon,
-  };
+  });
 }
 
 // ── Dev helper ────────────────────────────────────────────────────────────────
