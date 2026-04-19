@@ -1,0 +1,276 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ── Design Tokens ─────────────────────────────────────────────────── */
+:root {
+  --bg-base:     #06090f;
+  --bg-surface:  #0d1117;
+  --bg-elevated: #161b22;
+  --bg-overlay:  #21262d;
+  --bg-hover:    #292e36;
+
+  --neon-cyan:    #00f0ff;
+  --neon-green:   #00ff88;
+  --neon-amber:   #ffb800;
+  --neon-purple:  #b44dff;
+  --neon-blue:    #6e56cf;
+
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #6e7681;
+
+  --border:        #30363d;
+  --border-subtle: #21262d;
+
+  --accent:       #6e56cf;
+  --accent-hover: #7c68d6;
+  --accent-subtle: #1d1540;
+
+  --success: #00c870;
+  --error:   #ff5555;
+
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-body:    'Inter', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.5);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.6);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* ── React Flow Overrides ──────────────────────────────────────────── */
+.react-flow__edge-path { stroke-width: 2; }
+.react-flow__handle { opacity: 0 !important; pointer-events: none !important; }
+.react-flow__attribution { display: none; }
+.react-flow__background { background: var(--bg-base) !important; }
+.react-flow__pane { cursor: grab; }
+.react-flow__pane:active { cursor: grabbing; }
+
+.react-flow__controls {
+  box-shadow: var(--shadow-md) !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--border) !important;
+  overflow: hidden;
+}
+.react-flow__controls button {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+  width: 28px !important;
+  height: 28px !important;
+  transition: all 0.15s ease;
+}
+.react-flow__controls button:hover {
+  background: var(--bg-overlay) !important;
+  color: var(--text-primary) !important;
+}
+.react-flow__controls svg { fill: currentColor; }
+
+.react-flow__minimap {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Edge Animations ───────────────────────────────────────────────── */
+@keyframes edgeFlow {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes edgeFlowFast {
+  from { stroke-dashoffset: 16; }
+  to   { stroke-dashoffset: 0; }
+}
+.edge-animated {
+  stroke-dasharray: 6 3;
+  animation: edgeFlow 1.2s linear infinite;
+}
+.edge-animated-highlight {
+  stroke-dasharray: 4 2;
+  animation: edgeFlowFast 0.5s linear infinite;
+}
+
+/* ── Node Animations ───────────────────────────────────────────────── */
+@keyframes ripple {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+/* Active state: green breathing glow */
+@keyframes nodeActivePulse {
+  0%, 100% { box-shadow: 0 0 20px #00e67677, 0 0 40px #00e67633; }
+  50%       { box-shadow: 0 0 32px #00e676bb, 0 0 64px #00e67655, 0 0 90px #00e67622; }
+}
+/* Rejected active state: red breathing glow */
+@keyframes nodeRejectPulse {
+  0%, 100% { box-shadow: 0 0 20px #ff444477, 0 0 40px #ff444433; }
+  50%       { box-shadow: 0 0 32px #ff4444bb, 0 0 64px #ff444455, 0 0 90px #ff444422; }
+}
+/* Burst ring on entering a new state */
+@keyframes nodeRipple {
+  0%   { transform: scale(0.85); opacity: 0.9; }
+  100% { transform: scale(1.9);  opacity: 0; }
+}
+@keyframes pulseReady {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(1.4); }
+}
+/* Traversal "draw" animation */
+@keyframes edgeTraverse {
+  0%   { stroke-dashoffset: 1200; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+/* ── Utility ───────────────────────────────────────────────────────── */
+.panel-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Floating Panel Animations ─────────────────────────────────────── */
+@keyframes floatIn {
+  0%   { opacity: 0; transform: scale(0.92) translateY(10px); }
+  60%  { opacity: 1; transform: scale(1.01) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+@keyframes floatOut {
+  0%   { opacity: 1; transform: scale(1)    translateY(0);  }
+  100% { opacity: 0; transform: scale(0.92) translateY(8px); }
+}
+
+.floating-panel {
+  position: fixed;
+  z-index: 200;
+  background: rgba(13, 17, 23, 0.88);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(48, 54, 61, 0.8);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 0.5px rgba(255,255,255,0.05) inset,
+    0 8px 32px rgba(0,0,0,0.6),
+    0 2px 8px rgba(0,0,0,0.4);
+  animation: floatIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  max-width: 480px;
+}
+
+.floating-panel-handle {
+  cursor: grab;
+  user-select: none;
+}
+.floating-panel-handle:active {
+  cursor: grabbing;
+}
+
+/* ── Sim controls bar ──────────────────────────────────────────────── */
+.sim-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid rgba(48,54,61,0.7);
+  background: rgba(22,27,34,0.9);
+  color: #8b949e;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(8px);
+}
+.sim-btn:hover {
+  background: rgba(33,38,45,0.95);
+  color: #e6edf3;
+  border-color: rgba(110,86,207,0.5);
+}
+.sim-btn:active {
+  transform: scale(0.93);
+}
+.sim-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.sim-btn.active {
+  background: rgba(110,86,207,0.25);
+  border-color: rgba(110,86,207,0.7);
+  color: #b09af0;
+}
+
+/* ── Pipeline sidebar action buttons ───────────────────────────────── */
+.pipeline-action-btn {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1px solid transparent;
+  text-align: center;
+}
+.pipeline-action-btn.purple {
+  background: rgba(180,77,255,0.18);
+  border-color: rgba(180,77,255,0.45);
+  color: #d08fff;
+  box-shadow: 0 2px 10px rgba(180,77,255,0.12);
+}
+.pipeline-action-btn.purple:hover {
+  background: rgba(180,77,255,0.28);
+  border-color: rgba(180,77,255,0.6);
+  color: #e0b0ff;
+  box-shadow: 0 3px 14px rgba(180,77,255,0.22);
+}
+.pipeline-action-btn.indigo {
+  background: rgba(110,86,207,0.18);
+  border-color: rgba(110,86,207,0.45);
+  color: #a08fef;
+  box-shadow: 0 2px 10px rgba(110,86,207,0.12);
+}
+.pipeline-action-btn.indigo:hover {
+  background: rgba(110,86,207,0.28);
+  border-color: rgba(110,86,207,0.6);
+  color: #c0b0ff;
+  box-shadow: 0 3px 14px rgba(110,86,207,0.22);
+}
+.pipeline-action-btn.amber {
+  background: rgba(255,184,0,0.12);
+  border-color: rgba(255,184,0,0.35);
+  color: #e0a820;
+  box-shadow: 0 2px 10px rgba(255,184,0,0.08);
+}
+.pipeline-action-btn.amber:hover {
+  background: rgba(255,184,0,0.2);
+  border-color: rgba(255,184,0,0.5);
+  color: #ffcc40;
+  box-shadow: 0 3px 14px rgba(255,184,0,0.15);
+}
+
