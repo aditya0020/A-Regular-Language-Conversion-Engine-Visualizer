@@ -2,7 +2,7 @@
 
 Interactive Theory of Computation simulator for building, converting, visualizing, and testing finite automata in the browser.
 
-![Automata Lab preview](./src/assets/hero.png)
+
 
 ## Overview
 
