@@ -68,7 +68,7 @@ export default function App() {
   const clearReady = (id) => setReadyStages(prev => { const n = new Set(prev); n.delete(id); return n; });
 
   // ── Reset pipeline downstream ────────────────────────────────────────
-  const resetFrom = (stage) => {
+  const resetFrom = useCallback((stage) => {
     if (stage === 'enfa') { setNfaClean(null); setDfa(null); setMinDfa(null); setCurrentStep(-1); setMinStep(-1); }
     if (stage === 'nfa')  { setDfa(null); setMinDfa(null); setCurrentStep(-1); setMinStep(-1); }
     if (stage === 'dfa')  { setMinDfa(null); setMinStep(-1); }
@@ -77,42 +77,35 @@ export default function App() {
     setTraverseEdge(null);
     setSimRejected(false);
     setIsPlaying(false);
-  };
+  }, []);
 
   // ── Conversion handlers ──────────────────────────────────────────────
-  const handleBuildFromRegex = (regex) => {
+  const handleBuildFromRegex = useCallback((regex) => {
     const result = normalizeNfaAutomaton(regexToENFA(regex));
     setEnfa(result);
     setRegexString(regex);    // remember the raw regex for the NFA stage
     resetFrom('enfa');
     markReady('enfa');
     setActiveStage('enfa');
-  };
+  }, [resetFrom]);
 
   // Regex mode — NFA stage: Glushkov construction + bisimulation merging
   // This runs INDEPENDENTLY from the Thompson ε-NFA, giving the provably
   // minimal ε-free NFA (e.g. 3 states for (a|b)*ab) without ε-elimination.
-  const handleRemoveEpsilon = () => {
+  const handleRemoveEpsilon = useCallback(() => {
     if (!regexString) return;
     const minNFA = normalizeNfaAutomaton(buildMinimalNFA(regexString));  // Glushkov + bisimulation
     setNfaClean(minNFA);
     resetFrom('nfa');
     markReady('nfa');
     setActiveStage('nfa');
-  };
+  }, [regexString, resetFrom]);
 
   // Builder mode: same Stage 2 compression on the manually-built NFA
-  const handleRemoveEpsilonBuilder = () => {
-    const clean = normalizeNfaAutomaton(compressNFA(nfa));    // Stage 2A + 2B
-    setNfaClean(clean);
-    resetFrom('nfa');
-    markReady('nfa');
-    setActiveStage('nfa');
-  };
 
   // Converts NFA → DFA via subset construction.
   // In builder mode: if nfaClean is not yet set, auto-applies ε-removal on the raw NFA first.
-  const handleConvert = () => {
+  const handleConvert = useCallback(() => {
     // Pick the source NFA: prefer already-compressed; fall back to compressing raw NFA
     const sourceNFA = nfaClean ?? (inputMode === 'builder' ? normalizeNfaAutomaton(compressNFA(nfa)) : null);
     if (!sourceNFA) return;
@@ -128,16 +121,16 @@ export default function App() {
     setCurrentStep(-1);
     markReady('dfa');
     setActiveStage('dfa');
-  };
+  }, [inputMode, nfa, nfaClean, resetFrom]);
 
-  const handleMinimize = () => {
+  const handleMinimize = useCallback(() => {
     if (!dfa) return;
     const result = normalizeDfaAutomaton(hopcroftMinimize(dfa));
     setMinDfa(result);
     setMinStep(-1);
     markReady('minDfa');
     setActiveStage('minDfa');
-  };
+  }, [dfa]);
 
   // ── Step navigation ──────────────────────────────────────────────────
   const handleStepChange = useCallback((idx) => {
@@ -188,19 +181,12 @@ export default function App() {
   useEffect(() => {
     clearTimeout(playTimerRef.current);
 
-    if (!isPlaying) return undefined;
-    if (activeSteps.length === 0) {
-      setIsPlaying(false);
-      return undefined;
-    }
-    if (activeStepIdx >= activeSteps.length - 1) {
-      setIsPlaying(false);
-      return undefined;
-    }
+    if (!isPlaying || activeSteps.length === 0 || activeStepIdx >= activeSteps.length - 1) return undefined;
 
     const nextStep = activeStepIdx === -1 ? 0 : activeStepIdx + 1;
     playTimerRef.current = setTimeout(() => {
       setActiveStep(nextStep);
+      if (nextStep >= activeSteps.length - 1) setIsPlaying(false);
     }, 900);
 
     return () => clearTimeout(playTimerRef.current);
@@ -249,7 +235,30 @@ export default function App() {
   ], [inputMode, enfa, nfaClean, dfa, minDfa]);
 
   // ── Active DFA for string tester ─────────────────────────────────────
-  const activeDFA = minDfa ?? dfa;
+  const activeDFA = useMemo(() => {
+    if (activeStage === 'dfa') return dfa;
+    if (activeStage === 'minDfa') return minDfa;
+    return null;
+  }, [activeStage, dfa, minDfa]);
+
+  const testPanelMessage = useMemo(() => {
+    if (activeStage === 'dfa' || activeStage === 'minDfa') {
+      return 'Build this machine to enable testing';
+    }
+    return 'Select the DFA or Min-DFA canvas to test strings';
+  }, [activeStage]);
+
+  const activeDFAKey = useMemo(() => {
+    if (!activeDFA) return `no-dfa|${activeStage}`;
+    return JSON.stringify({
+      stage: activeStage,
+      start: activeDFA.startState ?? activeDFA.start ?? '',
+      states: activeDFA.states ?? [],
+      acceptStates: activeDFA.acceptStates ?? activeDFA.accept ?? [],
+      alphabet: activeDFA.alphabet ?? [],
+      transitions: activeDFA.transitions ?? {},
+    });
+  }, [activeDFA, activeStage]);
 
   // ── Stats ─────────────────────────────────────────────────────────────
   const dfaStats = dfa  ? { states: dfa.states.length,  accept: dfa.acceptStates.length } : null;
@@ -257,6 +266,7 @@ export default function App() {
 
   // ── Which "ready" stage to auto-switch to on stage click ─────────────
   const handleStageClick = (id) => {
+    setIsPlaying(false);
     clearReady(id);
     setActiveStage(id);
   };
@@ -276,7 +286,7 @@ export default function App() {
       if (!minDfa) return { label: '✦ Minimize DFA',  action: handleMinimize, color: 'amber' };
       return null;
     }
-  }, [inputMode, enfa, nfaClean, dfa, minDfa]);
+  }, [inputMode, enfa, nfaClean, dfa, minDfa, handleConvert, handleMinimize, handleRemoveEpsilon]);
 
   // ── Transition table data for the active automaton stage ────────────────
   const tableInfo = useMemo(() => {
@@ -501,7 +511,7 @@ export default function App() {
                     key={m.id}
                     onClick={() => {
                       setInputMode(m.id);
-                      if (m.id === 'builder') setActiveStage('nfa');
+                      if (m.id === 'builder') setActiveStage('enfa');
                       else if (enfa) setActiveStage('enfa');
                     }}
                     style={{
@@ -682,8 +692,9 @@ export default function App() {
               {/* Test tab */}
               {rightTab === 'test' && (
                 <StringTester
-                  key={activeDFA ? `${activeDFA.startState ?? activeDFA.start}|${activeDFA.states?.join(',')}` : 'no-dfa'}
+                  key={activeDFAKey}
                   dfa={activeDFA}
+                  emptyMessage={testPanelMessage}
                   onPathChange={handlePathChange}
                 />
               )}

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { validateRegex } from '../utils/regexToENFA';
 
 // ── Data ──────────────────────────────────────────────────────────────────
@@ -24,8 +24,22 @@ const HISTORY_KEY = 'automata_regex_history';
 const MAX_HIST    = 8;
 
 function getHistory()    { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; } }
-function pushHistory(r)  { try { const h = [r, ...getHistory().filter(x => x !== r)].slice(0, MAX_HIST); localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch {} }
-function clearHistoryLS(){ try { localStorage.removeItem(HISTORY_KEY); } catch {} }
+function pushHistory(r)  {
+  try {
+    const h = [r, ...getHistory().filter(x => x !== r)].slice(0, MAX_HIST);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
+  } catch {
+    // Ignore storage errors and keep the current session usable.
+  }
+}
+
+function clearHistoryLS() {
+  try {
+    localStorage.removeItem(HISTORY_KEY);
+  } catch {
+    // Ignore storage errors and keep the current session usable.
+  }
+}
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────
 const V = (name) => `var(${name})`;   // CSS variable shorthand
@@ -90,18 +104,16 @@ export default function RegexInput({
   const [showRef,      setShowRef]      = useState(false);
   const inputRef = useRef(null);
 
-  // Sync history from storage when panel mounts
-  useEffect(() => { setHistory(getHistory()); }, []);
-
   // ── Core actions ────────────────────────────────────────────────────────
   const handleBuild = () => {
-    const err = validateRegex(regex);
+    const value = regex.trim();
+    const err = validateRegex(value);
     if (err) { setError(err); return; }
     setError(null);
     setDirty(false);
     try {
-      onBuild(regex.trim());
-      pushHistory(regex.trim());
+      onBuild(value);
+      pushHistory(value);
       setHistory(getHistory());
     } catch (e) { setError(e.message); }
   };
@@ -119,8 +131,14 @@ export default function RegexInput({
 
   const copyRegex = () => {
     if (!regex) return;
+    if (!navigator.clipboard?.writeText) {
+      setError('Clipboard is not available in this browser');
+      return;
+    }
     navigator.clipboard.writeText(regex).then(() => {
       setCopied(true); setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      setError('Could not copy the regex to the clipboard');
     });
   };
 

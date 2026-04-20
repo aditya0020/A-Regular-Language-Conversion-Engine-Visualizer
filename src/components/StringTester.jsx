@@ -10,7 +10,7 @@ function randomString(alphabet) {
   return Array.from({ length: len }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
 }
 
-export default function StringTester({ dfa, onPathChange }) {
+export default function StringTester({ dfa, onPathChange, emptyMessage = 'Build a DFA to enable testing' }) {
   const normalizedDfa = useMemo(() => normalizeDfaAutomaton(dfa), [dfa]);
   const [input,  setInput]  = useState('');
   const [path,   setPath]   = useState([]);
@@ -39,6 +39,7 @@ export default function StringTester({ dfa, onPathChange }) {
     }, 600);
     return () => clearInterval(autoRef.current);
   }, [isAuto, path.length]);
+
 
   // ── Simulation ─────────────────────────────────────────────────────
   const runSimulation = useCallback((overrideInput) => {
@@ -453,7 +454,7 @@ export default function StringTester({ dfa, onPathChange }) {
           opacity: 0.6,
         }}>
           <span style={{ fontSize: 28 }}>⚙</span>
-          <span>Build a DFA to enable testing</span>
+          <span>{emptyMessage}</span>
         </div>
       )}
 
@@ -497,7 +498,7 @@ function CtrlBtn({ children, onClick, disabled, active, activeStyle, style, titl
     position: 'relative',
     display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
-    gap: 2, padding: '6px 4px', borderRadius: 8, cursor: 'pointer',
+    gap: 2, padding: '6px 4px', borderRadius: 8,
     border: active ? '1px solid rgba(110,86,207,0.6)' : '1px solid var(--border)',
     background: active ? 'rgba(110,86,207,0.2)' : 'var(--bg-elevated)',
     color: disabled ? 'var(--text-muted)' : active ? '#b09af0' : 'var(--text-secondary)',

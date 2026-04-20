@@ -1,8 +1,5 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * FloatingPanel — draggable, closable modal with Apple-style float-in animation
- */
 export default function FloatingPanel({
   title,
   icon,
@@ -12,59 +9,60 @@ export default function FloatingPanel({
   width = 380,
   height = 460,
 }) {
-  const panelRef  = useRef(null);
+  const panelRef = useRef(null);
   const dragState = useRef(null);
   const [pos, setPos] = useState(defaultPosition);
 
-  /* ── Dragging ─────────────────────────────────────────────────── */
-  const onMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
-    dragState.current = {
-      startX: e.clientX - pos.x,
-      startY: e.clientY - pos.y,
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup',   onMouseUp);
-    e.preventDefault();
-  }, [pos]);
-
-  const onMouseMove = useCallback((e) => {
+  const onMouseMove = useCallback((event) => {
     if (!dragState.current) return;
-    const newX = e.clientX - dragState.current.startX;
-    const newY = e.clientY - dragState.current.startY;
 
-    // Keep panel within viewport
+    const nextX = event.clientX - dragState.current.startX;
+    const nextY = event.clientY - dragState.current.startY;
     const panel = panelRef.current;
-    if (panel) {
-      const maxX = window.innerWidth  - panel.offsetWidth  - 8;
-      const maxY = window.innerHeight - panel.offsetHeight - 8;
-      setPos({
-        x: Math.max(8, Math.min(newX, maxX)),
-        y: Math.max(8, Math.min(newY, maxY)),
-      });
-    } else {
-      setPos({ x: newX, y: newY });
+
+    if (!panel) {
+      setPos({ x: nextX, y: nextY });
+      return;
     }
+
+    const maxX = window.innerWidth - panel.offsetWidth - 8;
+    const maxY = window.innerHeight - panel.offsetHeight - 8;
+    setPos({
+      x: Math.max(8, Math.min(nextX, maxX)),
+      y: Math.max(8, Math.min(nextY, maxY)),
+    });
   }, []);
 
   const onMouseUp = useCallback(() => {
     dragState.current = null;
     window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup',   onMouseUp);
   }, [onMouseMove]);
 
-  useEffect(() => () => {
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup',   onMouseUp);
+  const onMouseDown = useCallback(
+    (event) => {
+      if (event.button !== 0) return;
+
+      dragState.current = {
+        startX: event.clientX - pos.x,
+        startY: event.clientY - pos.y,
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp, { once: true });
+      event.preventDefault();
+    },
+    [onMouseMove, onMouseUp, pos.x, pos.y]
+  );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
   }, [onMouseMove, onMouseUp]);
 
   return (
-    <div
-      ref={panelRef}
-      className="floating-panel"
-      style={{ left: pos.x, top: pos.y, width, height }}
-    >
-      {/* ── Title bar (drag handle) ─────────────────────────────── */}
+    <div ref={panelRef} className="floating-panel" style={{ left: pos.x, top: pos.y, width, height }}>
       <div
         className="floating-panel-handle flex items-center justify-between px-4 py-3 border-b"
         style={{
@@ -83,7 +81,6 @@ export default function FloatingPanel({
           </span>
         </div>
 
-        {/* macOS-style traffic lights */}
         <div className="flex items-center gap-1.5">
           <button
             onClick={onClose}
@@ -96,10 +93,7 @@ export default function FloatingPanel({
         </div>
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden">
-        {children}
-      </div>
+      <div className="flex-1 overflow-hidden">{children}</div>
     </div>
   );
 }

@@ -1,60 +1,48 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import {
-  ReactFlow,
-  ReactFlowProvider,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
-  BackgroundVariant,
-  useReactFlow,
-  useNodesState,
+  ReactFlow,
+  ReactFlowProvider,
   useEdgesState,
+  useNodesState,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import BezierEdge from './BezierEdge';
 import CustomNode from './CustomNode';
 import SelfLoopEdge from './SelfLoopEdge';
-import BezierEdge from './BezierEdge';
 
 const nodeTypes = { custom: CustomNode };
 const edgeTypes = { selfloop: SelfLoopEdge, bezierEdge: BezierEdge };
 
-/**
- * Flow — uses React Flow's internal node/edge state so drag positions persist.
- * External `nodes` prop drives the graph structure (labels, highlight colours, etc.)
- * but position changes made by dragging are kept in local state and NOT overwritten
- * on every parent re-render.  Positions only reset when the set of node IDs changes
- * (i.e. a new automaton stage is loaded onto the canvas).
- */
 function Flow({ nodes: externalNodes, edges: externalEdges }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(externalNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(externalEdges);
   const { fitView } = useReactFlow();
-
-  // Track the last set of node IDs so we know when the graph structure changes
   const prevNodeIdsRef = useRef('');
 
   useEffect(() => {
-    const currentIds = externalNodes.map(n => n.id).sort().join(',');
+    const currentIds = externalNodes.map((node) => node.id).sort().join(',');
 
     if (currentIds !== prevNodeIdsRef.current) {
-      // New graph: reset both nodes and positions, then fit view
       prevNodeIdsRef.current = currentIds;
       setNodes(externalNodes);
       setEdges(externalEdges);
-      // Small delay so the DOM has settled before fitting
       setTimeout(() => fitView({ padding: 0.4, maxZoom: 1.4, duration: 300 }), 50);
-    } else {
-      // Same graph (e.g. highlight colour changed from simulation). Merge the
-      // updated data into existing nodes so drag positions are preserved.
-      setNodes(prev =>
-        prev.map(n => {
-          const updated = externalNodes.find(e => e.id === n.id);
-          return updated ? { ...n, data: updated.data } : n;
-        })
-      );
-      setEdges(externalEdges);
+      return;
     }
-  }, [externalNodes, externalEdges]);
+
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        const updated = externalNodes.find((candidate) => candidate.id === node.id);
+        return updated ? { ...node, data: updated.data } : node;
+      })
+    );
+    setEdges(externalEdges);
+  }, [externalEdges, externalNodes, fitView, setEdges, setNodes]);
 
   if (!nodes || nodes.length === 0) {
     return (
@@ -80,36 +68,26 @@ function Flow({ nodes: externalNodes, edges: externalEdges }) {
       fitViewOptions={{ padding: 0.4, maxZoom: 1.4 }}
       minZoom={0.15}
       maxZoom={4}
-      nodesDraggable={true}
+      nodesDraggable
       nodesConnectable={false}
-      elementsSelectable={true}
-      zoomOnScroll={true}
-      zoomOnPinch={true}
+      elementsSelectable
+      zoomOnScroll
+      zoomOnPinch
       panOnScroll={false}
-      panOnDrag={true}
+      panOnDrag
       defaultEdgeOptions={{ type: 'bezierEdge' }}
       nodeOrigin={[0.5, 0.5]}
       proOptions={{ hideAttribution: true }}
     >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={20}
-        size={1}
-        color="#21262d"
-      />
-      <Controls
-        position="bottom-left"
-        showInteractive={false}
-        showFitView={true}
-        style={{ bottom: 16, left: 16 }}
-      />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#21262d" />
+      <Controls position="bottom-left" showInteractive={false} showFitView style={{ bottom: 16, left: 16 }} />
       <MiniMap
-        nodeColor={n => {
-          if (n.data.isRejected)     return '#ff4444';
-          if (n.data.isRejectedPath) return '#cc3333';
-          if (n.data.isHighlighted)  return '#00e676';
-          if (n.data.isPath)         return '#00c870';
-          if (n.data.isDead)         return '#21262d';
+        nodeColor={(node) => {
+          if (node.data.isRejected) return '#ff4444';
+          if (node.data.isRejectedPath) return '#cc3333';
+          if (node.data.isHighlighted) return '#00e676';
+          if (node.data.isPath) return '#00c870';
+          if (node.data.isDead) return '#21262d';
           return '#6e56cf';
         }}
         maskColor="#06090faa"
