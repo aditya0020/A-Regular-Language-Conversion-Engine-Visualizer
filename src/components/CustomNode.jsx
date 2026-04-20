@@ -14,8 +14,6 @@ export default function CustomNode({ data }) {
     isRejectedPath,
   } = data;
 
-  const showRipple = isHighlighted || isPath;
-
   let border = '2px solid #38bdf8';
   let bg = '#0c1a26';
   let color = '#e0f6ff';
@@ -47,14 +45,14 @@ export default function CustomNode({ data }) {
     bg = '#1a0000';
     color = '#ffcccc';
     glow = '0 0 20px #ff444499, 0 0 44px #ff444433';
-    transform = 'scale(1.12)';
+    transform = 'scale(1.08)';
     animation = 'nodeRejectPulse 1.6s ease-in-out infinite';
   } else if (isHighlighted) {
     border = '3px solid #00e676';
     bg = '#001a0d';
     color = '#ccffe8';
     glow = '0 0 20px #00e67699, 0 0 44px #00e67633';
-    transform = 'scale(1.12)';
+    transform = 'scale(1.08)';
     animation = 'nodeActivePulse 1.6s ease-in-out infinite';
   }
 
@@ -105,19 +103,16 @@ export default function CustomNode({ data }) {
           </div>
         )}
 
-        {showRipple && (
+        {isHighlighted && (
           <div
             style={{
               position: 'absolute',
-              width: SIZE + (isHighlighted ? 28 : 20),
-              height: SIZE + (isHighlighted ? 28 : 20),
+              width: SIZE + 28,
+              height: SIZE + 28,
               borderRadius: '50%',
-              border: `2px solid ${
-                isRejected ? '#ff4444' : isRejectedPath ? '#cc3333' : isHighlighted ? '#00e676' : '#00c870'
-              }`,
-              animation: `nodeRipple ${isHighlighted ? '0.7s' : '0.5s'} cubic-bezier(0.2,0,0.8,1) infinite`,
+              border: `3px solid ${isRejected ? '#ff4444' : '#00e676'}`,
+              animation: 'nodeRipple 0.7s cubic-bezier(0.2,0,0.8,1) forwards',
               pointerEvents: 'none',
-              opacity: isHighlighted ? 1 : 0.6,
             }}
           />
         )}
